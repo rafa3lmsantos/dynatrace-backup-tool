@@ -25,7 +25,7 @@ Uma ferramenta automatizada para fazer backup das configurações do Dynatrace u
 
 ### 1. Clone o Repositório
 ```bash
-git clone https://github.com/seu-usuario/dynatrace-backup-tool.git
+git clone https://github.com/rafa3lmsantos/dynatrace-backup-tool.git
 cd dynatrace-backup-tool
 ```
 
@@ -165,8 +165,8 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 
 Se você encontrar algum problema ou tiver sugestões:
 
-1. 🐛 [Reporte bugs](https://github.com/seu-usuario/dynatrace-backup-tool/issues)
-2. 💡 [Sugira melhorias](https://github.com/seu-usuario/dynatrace-backup-tool/discussions)
+1. 🐛 [Reporte bugs](https://github.com/rafa3lmsantos/dynatrace-backup-tool/issues)
+2. 💡 [Sugira melhorias](https://github.com/rafa3lmsantos/dynatrace-backup-tool/discussions)
 3. 📧 Entre em contato através das issues
 
 ## 🌟 **Reconhecimentos**
