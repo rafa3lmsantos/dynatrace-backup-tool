@@ -31,7 +31,7 @@ cd dynatrace-backup-tool
 
 ### 2. Configure as Variáveis de Ambiente
 
-Crie as seguintes variáveis de ambiente:
+**Opção 1: Variáveis de Sistema**
 
 **Windows:**
 ```cmd
@@ -43,6 +43,20 @@ set DT_API_TOKEN=your-api-token
 ```bash
 export DT_CLUSTER_URL=https://your-environment.live.dynatrace.com
 export DT_API_TOKEN=your-api-token
+```
+
+**Opção 2: Arquivo .env (Recomendado)**
+
+Copie o arquivo de exemplo e configure:
+```bash
+cp .env.example .env
+# Edite o arquivo .env com suas configurações
+```
+
+Conteúdo do arquivo `.env`:
+```env
+DT_CLUSTER_URL=https://your-environment.live.dynatrace.com
+DT_API_TOKEN=your-api-token
 ```
 
 ### 3. Execute o Backup

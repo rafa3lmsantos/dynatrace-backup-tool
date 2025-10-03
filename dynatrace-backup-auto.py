@@ -20,7 +20,13 @@ import shutil
 
 class DynatraceBackupUniversal:
     def __init__(self):
-        self.base_url = "https://lkx73873.live.dynatrace.com"
+        # Usar variáveis de ambiente para configurações sensíveis
+        self.base_url = os.getenv('DT_CLUSTER_URL')
+        if not self.base_url:
+            print("❌ Erro: Variável de ambiente DT_CLUSTER_URL não configurada!")
+            print("📋 Configure com: set DT_CLUSTER_URL=https://seu-ambiente.live.dynatrace.com")
+            sys.exit(1)
+            
         self.system = platform.system().lower()
         self.arch = self._get_architecture()
         self.python_version = self._get_python_version()
@@ -54,20 +60,25 @@ class DynatraceBackupUniversal:
     
     def _get_token(self):
         """Obtém token de múltiplas fontes."""
-        # 1. Variável de ambiente
+        # 1. Variável de ambiente padrão DT_API_TOKEN
+        token = os.getenv("DT_API_TOKEN")
+        if token:
+            return token
+            
+        # 2. Variável de ambiente alternativa (compatibilidade)
         token = os.getenv("DYNATRACE_API_TOKEN")
         if token:
             return token
             
-        # 2. Arquivo .env
+        # 3. Arquivo .env
         env_file = Path(".env")
         if env_file.exists():
             with open(env_file, 'r') as f:
                 for line in f:
-                    if line.startswith("DYNATRACE_API_TOKEN="):
+                    if line.startswith("DT_API_TOKEN=") or line.startswith("DYNATRACE_API_TOKEN="):
                         return line.split("=", 1)[1].strip().strip('"\'')
         
-        # 3. Arquivo de configuração JSON
+        # 4. Arquivo de configuração JSON
         config_file = Path("dynatrace.config")
         if config_file.exists():
             try:
@@ -262,10 +273,11 @@ class DynatraceBackupUniversal:
             self._print_status("Token não encontrado!", "error")
             self._print_status("Configure usando uma das opções:", "info")
             if self.system == "windows":
-                self._print_status("  $env:DYNATRACE_API_TOKEN='seu_token'", "info")
+                self._print_status("  $env:DT_API_TOKEN='seu_token'", "info")
+                self._print_status("  set DT_API_TOKEN=seu_token", "info")
             else:
-                self._print_status("  export DYNATRACE_API_TOKEN='seu_token'", "info")
-            self._print_status("  ou crie arquivo .env com DYNATRACE_API_TOKEN=seu_token", "info")
+                self._print_status("  export DT_API_TOKEN='seu_token'", "info")
+            self._print_status("  ou crie arquivo .env com DT_API_TOKEN=seu_token", "info")
             return False
             
         masked_token = f"{self.token[:10]}...{self.token[-10:]}"
