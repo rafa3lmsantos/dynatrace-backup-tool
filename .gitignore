@@ -1,0 +1,49 @@
+# Arquivos de Backup
+backups/
+*.backup
+backup_*/
+
+# Logs
+*.log
+logs/
+.logs/
+
+# Arquivos de Configuração com Credenciais
+config/
+.env
+*.token
+*.key
+*.secret
+*credential*
+*password*
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Arquivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivos do Sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos Temporários
+*.tmp
+*.temp
+temp/
+
+# Monaco CLI cache
+monaco-config/
+.monaco/
+
+# Configurações locais
+local-config.json
+*.local

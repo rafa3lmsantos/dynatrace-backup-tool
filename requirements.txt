@@ -1,0 +1,6 @@
+# Dynatrace Backup Tool - Requirements
+# Este projeto não possui dependências externas obrigatórias
+# O script funciona apenas com Python padrão
+
+# Dependências opcionais (instaladas automaticamente se necessário):
+# requests>=2.25.0  # Para conectividade HTTP (fallback interno disponível)
