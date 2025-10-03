@@ -4,9 +4,13 @@
 
 ### 1. **📝 Edite o arquivo `.env`**
 ```env
-DT_CLUSTER_URL=https://lkx73873.live.dynatrace.com
+DT_CLUSTER_URL=https://seu-ambiente.live.dynatrace.com
 DT_API_TOKEN=seu-token-aqui
 ```
+
+**💡 Como encontrar sua URL:**
+- Use a URL que você acessa o Dynatrace
+- Exemplo: `https://abc12345.live.dynatrace.com`
 
 ### 2. **🔑 Obtenha seu Token**
 1. Acesse seu Dynatrace
