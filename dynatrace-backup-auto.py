@@ -18,6 +18,15 @@ from datetime import datetime
 import tempfile
 import shutil
 
+# Tentativa de importar requests (opcional)
+# O requests é usado para downloads mais eficientes, mas urllib é o fallback
+try:
+    import requests  # type: ignore  # pylint: disable=import-error
+    HAS_REQUESTS = True
+except ImportError:
+    # requests não está disponível, usaremos urllib como fallback
+    HAS_REQUESTS = False
+
 class DynatraceBackupUniversal:
     def __init__(self):
         # Usar variáveis de ambiente para configurações sensíveis
@@ -316,19 +325,21 @@ class DynatraceBackupUniversal:
             success = False
             
             # Método 1: requests (se disponível e SSL funcionar)
-            try:
-                import requests
-                response = requests.get(url, stream=True, timeout=60)
-                response.raise_for_status()
-                
-                with open(filename, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                success = True
-                self._print_status("Download via requests - OK", "success")
-                
-            except Exception as requests_error:
-                self._print_status(f"Requests falhou: {requests_error}", "warning")
+            if HAS_REQUESTS:
+                try:
+                    response = requests.get(url, stream=True, timeout=60)
+                    response.raise_for_status()
+                    
+                    with open(filename, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    success = True
+                    self._print_status("Download via requests - OK", "success")
+                    
+                except Exception as requests_error:
+                    self._print_status(f"Requests falhou: {requests_error}", "warning")
+            else:
+                self._print_status("Requests não disponível, usando urllib", "info")
                 
                 # Método 2: urllib com SSL desabilitado
                 try:
