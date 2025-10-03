@@ -46,6 +46,14 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - ✅ **Organização de Backups** - Estrutura timestamped automática
 
 ## [Unreleased]
+### ✅ Adicionado
+- ✅ **RESTORE.md** - Guia completo de restauração de configurações
+- ✅ **Métodos múltiplos de restore** - Monaco CLI, Scripts Python, Arquivos de configuração
+- ✅ **Restore seletivo** - Documentação para restaurar apenas partes específicas
+- ✅ **Validações de segurança** - Dry-run, backup antes de restore, testes em DEV
+- ✅ **Solução de problemas** - Erros comuns e suas soluções
+- ✅ **Exemplos práticos** - Cenários reais de migração e disaster recovery
+
 ### 🚀 Planejado
 - [ ] Suporte a múltiplos ambientes
 - [ ] Interface web opcional

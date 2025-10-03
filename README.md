@@ -146,8 +146,26 @@ dynatrace-backup-tool/
 ├── monaco.exe              # Monaco CLI (Windows)
 ├── README.md              # Esta documentação
 ├── GUIA-RAPIDO.md        # ⚡ 3 passos rápidos
+├── RESTORE.md            # 🔄 Guia completo de restore
 ├── LICENSE               # Licença MIT
 └── backups/             # Pasta de backups (criada automaticamente)
+```
+
+## 🔄 **Restore (Restauração)**
+
+Para restaurar as configurações em outro ambiente, consulte o **[Guia Completo de Restore](RESTORE.md)** que inclui:
+
+- 🚀 **Métodos de restore** (Monaco CLI, Scripts Python)
+- 🎯 **Restore seletivo** (apenas dashboards, SLOs, etc.)
+- ⚠️ **Validações e cuidados** (backup antes, dry-run, etc.)
+- 🔧 **Solução de problemas** (erros comuns e soluções)
+- 📋 **Exemplos práticos** para diferentes cenários
+
+**Comando rápido:**
+```bash
+# Navegue para o backup e execute:
+cd backups/backup_YYYYMMDD_HHMMSS
+../../monaco.exe deploy manifest.yaml --environment "https://destino.live.dynatrace.com"
 ```
 
 ## 🤝 **Contribuindo**
