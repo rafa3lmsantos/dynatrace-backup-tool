@@ -1,49 +1,66 @@
-# Arquivos de Backup
-backups/
-*.backup
-backup_*/
-
-# Logs
-*.log
-logs/
-.logs/
-
-# Arquivos de Configuração com Credenciais
-config/
+# 🔒 SEGURANÇA - Arquivos com Credenciais
 .env
 *.token
 *.key
 *.secret
 *credential*
 *password*
+config/
+local-config.json
+*.local
 
-# Cache do Python
+# 📁 Arquivos de Backup e Logs
+backups/
+*.backup
+backup_*/
+*.log
+logs/
+.logs/
+
+# 🐍 Python Cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+*.so
+.pytest_cache/
+.coverage
+*.egg-info/
 
-# Arquivos de IDE
+# 💻 Arquivos de IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.spyderproject
+.spyproject
 
-# Arquivos do Sistema
+# 🖥️ Arquivos do Sistema
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Arquivos Temporários
+# 📦 Arquivos Temporários
 *.tmp
 *.temp
 temp/
+.temp/
 
-# Monaco CLI cache
+# 🏗️ Monaco CLI cache e configurações
 monaco-config/
 .monaco/
+environments.yaml
 
-# Configurações locais
-local-config.json
-*.local
+# 📊 Arquivos de teste e desenvolvimento
+test_results/
+coverage/
+.coverage
+.pytest_cache/
+.tox/
+
+# 📋 Arquivos de build e distribuição
+build/
+dist/
+*.egg-info/

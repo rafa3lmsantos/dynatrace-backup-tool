@@ -8,12 +8,11 @@ Uma ferramenta automatizada para fazer backup das configurações do Dynatrace u
 
 ## 📋 **Características**
 
-- ✅ **Backup Automático Completo** - Exporta todas as configurações do Dynatrace
-- ✅ **Multi-Plataforma** - Funciona em Windows, Linux e macOS
-- ✅ **Fácil de Usar** - Um único comando para executar
-- ✅ **Organização Automática** - Backups organizados por data/hora
-- ✅ **Monaco CLI Integrado** - Não requer instalação manual do Monaco
-- ✅ **Sem Dependências Externas** - Funciona apenas com Python
+- ✅ **Backup Automático** - Exporta todas as configurações
+- ✅ **Multi-Plataforma** - Windows, Linux e macOS
+- ✅ **Configuração Simples** - Apenas edite o arquivo `.env`
+- ✅ **Monaco Integrado** - Não requer instalação manual
+- ✅ **Sem Dependências** - Funciona apenas com Python
 
 ## 🛠️ **Pré-requisitos**
 
@@ -29,35 +28,25 @@ git clone https://github.com/rafa3lmsantos/dynatrace-backup-tool.git
 cd dynatrace-backup-tool
 ```
 
-### 2. Configure as Variáveis de Ambiente
+### 2. Configure suas Credenciais
 
-**Opção 1: Variáveis de Sistema**
+**📝 Edite o arquivo `.env`:**
 
-**Windows:**
-```cmd
-set DT_CLUSTER_URL=https://your-environment.live.dynatrace.com
-set DT_API_TOKEN=your-api-token
-```
+1. Copie o arquivo de exemplo: `cp .env.example .env`
+2. Abra o arquivo `.env` no seu editor favorito
+3. Substitua os valores pelas suas credenciais:
 
-**Linux/macOS:**
-```bash
-export DT_CLUSTER_URL=https://your-environment.live.dynatrace.com
-export DT_API_TOKEN=your-api-token
-```
-
-**Opção 2: Arquivo .env (Recomendado)**
-
-Copie o arquivo de exemplo e configure:
-```bash
-cp .env.example .env
-# Edite o arquivo .env com suas configurações
-```
-
-Conteúdo do arquivo `.env`:
 ```env
-DT_CLUSTER_URL=https://your-environment.live.dynatrace.com
-DT_API_TOKEN=your-api-token
+# 🔧 Configuração Dynatrace - EDITE AQUI
+DT_CLUSTER_URL=https://seu-ambiente.live.dynatrace.com
+DT_API_TOKEN=seu-token-aqui
 ```
+
+**🔑 Como obter o Token:**
+1. Acesse: `https://seu-ambiente.live.dynatrace.com`
+2. Vá em: **Settings → Integration → Dynatrace API**
+3. Clique em: **Generate token**
+4. Selecione as permissões: `Read configuration`, `Read metrics`, `Read entities`
 
 ### 3. Execute o Backup
 ```bash
@@ -71,85 +60,94 @@ python dynatrace-backup-auto.py
 python dynatrace-backup-auto.py
 ```
 
-### Verificação de Conectividade
-O script automaticamente:
-1. Verifica a conectividade com o ambiente Dynatrace
-2. Valida o token de API
-3. Testa o Monaco CLI
-4. Executa o backup completo
+**O script faz tudo automaticamente:**
+1. ✅ Carrega as credenciais do arquivo `.env`
+2. ✅ Verifica conectividade com o Dynatrace
+3. ✅ Valida o token de API
+4. ✅ Executa o backup completo
+5. ✅ Organiza os arquivos por data/hora
 
 ### Estrutura de Backup
 
-Os backups são organizados automaticamente:
 ```
 backups/
 └── backup_YYYYMMDD_HHMMSS/
     └── project/
-        ├── dashboard-share-settings/
-        ├── key-user-actions-mobile/
-        ├── key-user-actions-web/
-        ├── network-zone/
-        ├── reports/
-        ├── request-attributes/
-        ├── service-resource-naming/
+        ├── dashboards/
+        ├── synthetic-monitors/
         ├── slo/
-        └── synthetic-monitor/
+        └── ... (outras configurações)
 ```
 
-## ⚙️ **Configuração de Tokens**
+## ⚙️ **Configuração Simples**
 
-### Como Obter o Token de API
+### Arquivo `.env`
 
+O arquivo `.env` é a forma mais simples de configurar a ferramenta:
+
+```env
+# 🔧 Configuração Dynatrace - EDITE AQUI
+DT_CLUSTER_URL=https://seu-ambiente.live.dynatrace.com
+DT_API_TOKEN=seu-token-aqui
+```
+
+### Como Obter suas Credenciais
+
+**1. URL do Ambiente:**
+- Use a URL que você acessa o Dynatrace
+- Exemplo: `https://abc12345.live.dynatrace.com`
+
+**2. Token de API:**
 1. Acesse seu ambiente Dynatrace
 2. Vá para **Settings > Integration > Dynatrace API**
 3. Clique em **Generate token**
-4. Selecione as seguintes permissões:
-   - `ReadConfig` - Para ler configurações
-   - `WriteConfig` - Para validação (opcional)
-   - `DataExport` - Para exportar dados
-
-### Escopo das Permissões
-
-O token deve ter permissões para:
-- Dashboard settings
-- Key user actions
-- Network zones
-- SLO definitions
-- Synthetic monitors
-- Request attributes
-- Reports
+4. Defina um nome para o token
+5. Selecione as permissões:
+   - ✅ `Read configuration`
+   - ✅ `Read metrics` 
+   - ✅ `Read entities`
+   - ✅ `Read settings`
+6. Copie o token gerado
 
 ## 🐛 **Solução de Problemas**
 
-### Erro de Conectividade
+### Erro: "URL do cluster não configurada"
 ```
-❌ Erro de conectividade com a API do Dynatrace
+❌ Erro: URL do cluster não configurada!
 ```
-**Solução:** Verifique se o `DT_CLUSTER_URL` está correto e acessível.
+**Solução:** Edite o arquivo `.env` e defina o `DT_CLUSTER_URL`
 
-### Erro de Token
+### Erro: "Token Authentication failed"  
 ```
-❌ Token de API inválido ou sem permissões
+❌ Token Authentication failed
 ```
-**Solução:** Verifique se o `DT_API_TOKEN` está correto e tem as permissões necessárias.
+**Solução:** 
+1. Verifique se o token no arquivo `.env` está correto
+2. Gere um novo token no Dynatrace com as permissões necessárias
+3. Certifique-se de que o token não expirou
 
-### Erro do Monaco
-```
-❌ Monaco CLI não está funcionando corretamente
-```
-**Solução:** O script tentará corrigir automaticamente. Se persistir, entre em contato.
+### Arquivo .env não encontrado
+**Solução:** Certifique-se de que o arquivo `.env` existe no mesmo diretório do script
+
+### Token sem permissões
+**Solução:** O token precisa das permissões:
+- `Read configuration`
+- `Read metrics`
+- `Read entities`
+- `Read settings`
 
 ## 📁 **Estrutura do Projeto**
 
 ```
 dynatrace-backup-tool/
 ├── dynatrace-backup-auto.py  # Script principal
-├── monaco.exe               # Monaco CLI (Windows)
-├── README.md               # Documentação
-├── .gitignore             # Exclusões do Git
-├── LICENSE                # Licença MIT
-├── requirements.txt       # Dependências
-└── backups/              # Pasta de backups (criada automaticamente)
+├── .env                     # 🔧 Configuração (edite aqui!)
+├── .env.example            # Template de configuração
+├── monaco.exe              # Monaco CLI (Windows)
+├── README.md              # Esta documentação
+├── GUIA-RAPIDO.md        # ⚡ 3 passos rápidos
+├── LICENSE               # Licença MIT
+└── backups/             # Pasta de backups (criada automaticamente)
 ```
 
 ## 🤝 **Contribuindo**
@@ -164,12 +162,11 @@ Contribuições são bem-vindas! Por favor:
 
 ## 📝 **Changelog**
 
-### v1.0.0 (2025-01-03)
-- ✅ Primeira versão estável
-- ✅ Backup automático completo
+### v1.0.0 (2025-10-03)
+- ✅ Configuração simplificada via arquivo `.env`
+- ✅ Backup automático completo  
 - ✅ Suporte multi-plataforma
 - ✅ Monaco CLI integrado
-- ✅ Documentação completa
 
 ## 📜 **Licença**
 

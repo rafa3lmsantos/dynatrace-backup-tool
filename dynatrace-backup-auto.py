@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Dynatrace Backup - Solução Universal com Auto-instalação
-- Auto-detecta e instala Python se necessário
-- Funciona em Windows, Linux e macOS
-- Script único para todas as plataformas
-- Zero configuração manual
+🚀 Dynatrace Configuration Backup Tool
+Backup automático das configurações do Dynatrace usando Monaco CLI
+
+Author: GitHub Community
+License: MIT
+Version: 1.0.0
 """
 
 import os
@@ -12,14 +14,13 @@ import sys
 import platform
 import subprocess
 import urllib.request
-import json
+import threading
+import time
+import re
 from pathlib import Path
 from datetime import datetime
-import tempfile
-import shutil
 
 # Tentativa de importar requests (opcional)
-# O requests é usado para downloads mais eficientes, mas urllib é o fallback
 try:
     import requests  # type: ignore  # pylint: disable=import-error
     HAS_REQUESTS = True
@@ -27,746 +28,516 @@ except ImportError:
     # requests não está disponível, usaremos urllib como fallback
     HAS_REQUESTS = False
 
-class DynatraceBackupUniversal:
+class DynatraceBackup:
     def __init__(self):
-        # Usar variáveis de ambiente para configurações sensíveis
-        self.base_url = os.getenv('DT_CLUSTER_URL')
+        # Carregar configurações
+        self.base_url = self._get_cluster_url()
+        self.token = self._get_token()
+        
         if not self.base_url:
-            print("❌ Erro: Variável de ambiente DT_CLUSTER_URL não configurada!")
-            print("📋 Configure com: set DT_CLUSTER_URL=https://seu-ambiente.live.dynatrace.com")
+            print("❌ Erro: URL do cluster não configurada!")
+            print("📋 Edite o arquivo .env e defina DT_CLUSTER_URL")
+            sys.exit(1)
+            
+        if not self.token:
+            print("❌ Erro: Token não configurado!")
+            print("📋 Edite o arquivo .env e defina DT_API_TOKEN")
             sys.exit(1)
             
         self.system = platform.system().lower()
         self.arch = self._get_architecture()
-        self.python_version = self._get_python_version()
-        self.token = self._get_token()
-        # Usa estrutura de pastas organizada
-        self.backup_dir = Path("../backups")
+        self.script_dir = Path(__file__).parent
+        self.backup_dir = self.script_dir / "backups"
         self.monaco_path = self._get_monaco_path()
         
-    def _get_architecture(self):
-        """Detecta arquitetura do sistema."""
-        machine = platform.machine().lower()
-        if machine in ['x86_64', 'amd64']:
-            return 'amd64'
-        elif machine in ['arm64', 'aarch64']:
-            return 'arm64'
-        elif machine in ['i386', 'i686']:
-            return '386'
-        else:
-            return 'amd64'
-    
-    def _get_python_version(self):
-        """Obtém versão do Python atual."""
-        return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    
-    def _get_monaco_path(self):
-        """Determina caminho do Monaco."""
-        if self.system == "windows":
-            return Path("monaco.exe")
-        else:
-            return Path("monaco")
-    
-    def _get_token(self):
-        """Obtém token de múltiplas fontes."""
-        # 1. Variável de ambiente padrão DT_API_TOKEN
-        token = os.getenv("DT_API_TOKEN")
-        if token:
-            return token
-            
-        # 2. Variável de ambiente alternativa (compatibilidade)
-        token = os.getenv("DYNATRACE_API_TOKEN")
-        if token:
-            return token
-            
-        # 3. Arquivo .env
-        env_file = Path(".env")
-        if env_file.exists():
-            with open(env_file, 'r') as f:
-                for line in f:
-                    if line.startswith("DT_API_TOKEN=") or line.startswith("DYNATRACE_API_TOKEN="):
-                        return line.split("=", 1)[1].strip().strip('"\'')
+        # Estatísticas do backup
+        self.stats = {
+            'start_time': None,
+            'end_time': None,
+            'total_configs': 0,
+            'successful_configs': 0,
+            'failed_configs': 0,
+            'warnings': 0,
+            'errors': [],
+            'warnings_list': [],
+            'progress_data': []
+        }
         
-        # 4. Arquivo de configuração JSON
-        config_file = Path("dynatrace.config")
-        if config_file.exists():
+    def _get_cluster_url(self):
+        """Obtém URL do cluster de variáveis de ambiente ou arquivo .env"""
+        # 1. Variáveis de ambiente
+        url = os.getenv("DT_CLUSTER_URL") or os.getenv("DYNATRACE_CLUSTER_URL")
+        if url:
+            return url
+            
+        # 2. Arquivo .env (no mesmo diretório do script)
+        script_dir = Path(__file__).parent
+        env_file = script_dir / ".env"
+        if env_file.exists():
             try:
-                with open(config_file, 'r') as f:
-                    config = json.load(f)
-                    return config.get("token")
-            except:
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("DT_CLUSTER_URL="):
+                            return line.split("=", 1)[1].strip().strip('"\'')
+            except Exception:
                 pass
-                
+        
         return None
     
-    def _print_status(self, message, status="info"):
-        """Imprime mensagem com status."""
-        icons = {
-            "info": "ℹ️",
-            "success": "✅",
-            "warning": "⚠️", 
-            "error": "❌",
-            "progress": "🔄",
-            "download": "⬇️"
-        }
-        icon = icons.get(status, "•")
-        print(f"{icon} {message}")
-    
-    def check_python_installation(self):
-        """Verifica e instala Python se necessário."""
-        self._print_status("Verificando instalação do Python...", "info")
-        
-        # Verifica se Python está adequado
-        if sys.version_info >= (3, 6):
-            self._print_status(f"Python {self.python_version} encontrado - OK!", "success")
-            return True
-        
-        self._print_status(f"Python {self.python_version} muito antigo (requer 3.6+)", "warning")
-        return self._install_python()
-    
-    def _install_python(self):
-        """Instala Python automaticamente."""
-        self._print_status("Iniciando instalação automática do Python...", "download")
-        
-        try:
-            if self.system == "windows":
-                return self._install_python_windows()
-            elif self.system == "darwin":
-                return self._install_python_macos()
-            else:
-                return self._install_python_linux()
-        except Exception as e:
-            self._print_status(f"Erro na instalação automática: {e}", "error")
-            self._print_status("Instale Python manualmente de python.org", "info")
-            return False
-    
-    def _install_python_windows(self):
-        """Instala Python no Windows."""
-        self._print_status("Baixando Python para Windows...", "download")
-        
-        # URL do instalador Python Windows
-        python_url = "https://www.python.org/ftp/python/3.11.5/python-3.11.5-amd64.exe"
-        installer_path = Path(tempfile.gettempdir()) / "python_installer.exe"
-        
-        # Download
-        urllib.request.urlretrieve(python_url, installer_path)
-        self._print_status("Download concluído", "success")
-        
-        # Instalação silenciosa
-        self._print_status("Instalando Python... (pode demorar alguns minutos)", "progress")
-        cmd = [
-            str(installer_path),
-            "/quiet",
-            "InstallAllUsers=1",
-            "PrependPath=1",
-            "Include_test=0"
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True)
-        
-        # Limpeza
-        installer_path.unlink()
-        
-        if result.returncode == 0:
-            self._print_status("Python instalado com sucesso!", "success")
-            self._print_status("Reinicie o terminal e execute novamente", "info")
-            return True
-        else:
-            self._print_status("Falha na instalação automática", "error")
-            return False
-    
-    def _install_python_macos(self):
-        """Instala Python no macOS."""
-        self._print_status("Verificando Homebrew...", "info")
-        
-        # Verifica se tem Homebrew
-        try:
-            subprocess.run(["brew", "--version"], capture_output=True, check=True)
-            self._print_status("Homebrew encontrado", "success")
+    def _get_token(self):
+        """Obtém token de API de variáveis de ambiente ou arquivo .env"""
+        # 1. Variáveis de ambiente
+        token = (os.getenv("DT_API_TOKEN") or 
+                os.getenv("DYNATRACE_API_TOKEN") or 
+                os.getenv("DYNATRACE_TOKEN"))
+        if token:
+            return token
             
-            # Instala Python via Homebrew
-            self._print_status("Instalando Python via Homebrew...", "progress")
-            result = subprocess.run(["brew", "install", "python@3.11"], capture_output=True)
-            
-            if result.returncode == 0:
-                self._print_status("Python instalado com sucesso!", "success")
-                return True
-            else:
-                raise Exception("Falha no brew install")
-                
-        except:
-            self._print_status("Homebrew não encontrado ou falha na instalação", "warning")
-            self._print_status("Instale manualmente:", "info")
-            self._print_status("1. Instale Homebrew: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"", "info")
-            self._print_status("2. Execute: brew install python@3.11", "info")
-            return False
-    
-    def _install_python_linux(self):
-        """Instala Python no Linux."""
-        self._print_status("Detectando distribuição Linux...", "info")
-        
-        # Detecta distribuição
-        distro_commands = {
-            "ubuntu": ["sudo", "apt", "update", "&&", "sudo", "apt", "install", "-y", "python3", "python3-pip"],
-            "debian": ["sudo", "apt", "update", "&&", "sudo", "apt", "install", "-y", "python3", "python3-pip"],
-            "centos": ["sudo", "yum", "install", "-y", "python3", "python3-pip"],
-            "rhel": ["sudo", "yum", "install", "-y", "python3", "python3-pip"],
-            "fedora": ["sudo", "dnf", "install", "-y", "python3", "python3-pip"],
-            "arch": ["sudo", "pacman", "-S", "python", "python-pip"]
-        }
-        
-        # Tenta detectar distribuição
-        try:
-            with open("/etc/os-release", "r") as f:
-                os_info = f.read().lower()
-                
-            for distro, cmd in distro_commands.items():
-                if distro in os_info:
-                    self._print_status(f"Distribuição detectada: {distro}", "info")
-                    self._print_status("Instalando Python...", "progress")
-                    
-                    # Executa comando de instalação
-                    result = subprocess.run(" ".join(cmd), shell=True, capture_output=True)
-                    
-                    if result.returncode == 0:
-                        self._print_status("Python instalado com sucesso!", "success")
-                        return True
-                    else:
-                        raise Exception(f"Falha no comando: {' '.join(cmd)}")
-                        
-        except Exception as e:
-            self._print_status(f"Não foi possível instalar automaticamente: {e}", "warning")
-            self._print_status("Instale manualmente com seu gerenciador de pacotes:", "info")
-            self._print_status("Ubuntu/Debian: sudo apt install python3 python3-pip", "info")
-            self._print_status("CentOS/RHEL: sudo yum install python3 python3-pip", "info")
-            self._print_status("Fedora: sudo dnf install python3 python3-pip", "info")
-            return False
-    
-    def install_dependencies(self):
-        """Instala dependências Python necessárias (opcionais)."""
-        self._print_status("Verificando dependências Python...", "info")
-        
-        # Requests é opcional - script funciona sem ele
-        optional_packages = ["requests"]
-        
-        for package in optional_packages:
+        # 2. Arquivo .env (no mesmo diretório do script)
+        script_dir = Path(__file__).parent
+        env_file = script_dir / ".env"
+        if env_file.exists():
             try:
-                __import__(package)
-                self._print_status(f"✓ {package} disponível", "success")
-            except ImportError:
-                self._print_status(f"⚠ {package} não encontrado (opcional)", "warning")
-                try:
-                    subprocess.run([
-                        sys.executable, "-m", "pip", "install", package
-                    ], check=True, capture_output=True, timeout=60)
-                    self._print_status(f"✓ {package} instalado", "success")
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                    self._print_status(f"⚠ Falha ao instalar {package} - continuando sem ele", "warning")
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("DT_API_TOKEN="):
+                            return line.split("=", 1)[1].strip().strip('"\'')
+            except Exception:
+                pass
         
-        return True
+        return None
+    
+    def _get_architecture(self):
+        """Detecta arquitetura do sistema"""
+        arch = platform.machine().lower()
+        if arch in ['x86_64', 'amd64']:
+            return 'amd64'
+        elif arch in ['arm64', 'aarch64']:
+            return 'arm64'
+        else:
+            return 'amd64'  # Default
+    
+    def _get_monaco_path(self):
+        """Determina caminho do Monaco CLI"""
+        if self.system == 'windows':
+            return self.script_dir / "monaco.exe"
+        else:
+            return self.script_dir / "monaco"
+    
+    def _mask_token(self, token):
+        """Mascara token para logs"""
+        if not token or len(token) < 10:
+            return "***"
+        return f"{token[:8]}...{token[-4:]}"
+    
+    def _get_python_version(self):
+        """Obtém versão do Python"""
+        return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    
+    def print_header(self, title):
+        """Imprime cabeçalho formatado"""
+        print("=" * 70)
+        print(f"🚀 {title}")
+        print("=" * 70)
+    
+    def monitor_progress(self, process, backup_path):
+        """Monitora progresso do backup em tempo real"""
+        print("\n📊 MONITORAMENTO DO BACKUP:")
+        print("=" * 50)
+        
+        last_count = 0
+        start_time = time.time()
+        
+        while process.poll() is None:
+            try:
+                # Contar arquivos criados
+                if backup_path.exists():
+                    current_count = sum(1 for _ in backup_path.rglob('*') if _.is_file())
+                    
+                    if current_count > last_count:
+                        elapsed = time.time() - start_time
+                        rate = current_count / elapsed if elapsed > 0 else 0
+                        
+                        print(f"📁 Arquivos processados: {current_count:,} | "
+                              f"⏱️ Tempo: {elapsed:.1f}s | "
+                              f"🚀 Taxa: {rate:.1f} arq/s", end='\r')
+                        
+                        last_count = current_count
+                
+                time.sleep(2)  # Atualizar a cada 2 segundos
+                
+            except Exception:
+                pass
+        
+        print("\n")  # Nova linha após o monitoramento
+    
+    def parse_monaco_output(self, output):
+        """Analisa saída do Monaco para estatísticas"""
+        if not output:
+            return
+        
+        lines = output.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Contar warnings
+            if 'level=WARN' in line:
+                self.stats['warnings'] += 1
+                # Extrair mensagem do warning
+                warn_match = re.search(r'msg="([^"]+)"', line)
+                if warn_match:
+                    self.stats['warnings_list'].append(warn_match.group(1))
+            
+            # Contar erros
+            elif 'level=ERROR' in line:
+                self.stats['failed_configs'] += 1
+                # Extrair mensagem do erro
+                error_match = re.search(r'msg="([^"]+)"', line)
+                if error_match:
+                    self.stats['errors'].append(error_match.group(1))
+            
+            # Detectar progresso
+            elif 'Downloading' in line or 'Downloaded' in line:
+                self.stats['progress_data'].append({
+                    'timestamp': datetime.now(),
+                    'message': line
+                })
+    
+    def print_statistics(self, backup_path, duration):
+        """Imprime estatísticas detalhadas do backup"""
+        print("\n" + "="*70)
+        print("📊 ESTATÍSTICAS DO BACKUP")
+        print("="*70)
+        
+        # Contar arquivos por tipo
+        file_counts = {}
+        total_size = 0
+        
+        for file_path in backup_path.rglob('*'):
+            if file_path.is_file():
+                ext = file_path.suffix.lower() or 'sem_extensão'
+                file_counts[ext] = file_counts.get(ext, 0) + 1
+                try:
+                    total_size += file_path.stat().st_size
+                except:
+                    pass
+        
+        total_files = sum(file_counts.values())
+        
+        print(f"📁 Total de arquivos: {total_files:,}")
+        print(f"💾 Tamanho total: {self._format_size(total_size)}")
+        print(f"⏱️ Duração: {duration:.1f} segundos")
+        print(f"🚀 Taxa média: {total_files/duration:.1f} arquivos/segundo")
+        
+        print(f"\n✅ Configurações bem-sucedidas: {self.stats['successful_configs']}")
+        print(f"❌ Configurações com erro: {self.stats['failed_configs']}")
+        print(f"⚠️ Avisos encontrados: {self.stats['warnings']}")
+        
+        # Top 5 tipos de arquivo
+        if file_counts:
+            print(f"\n📋 Tipos de arquivo mais comuns:")
+            sorted_types = sorted(file_counts.items(), key=lambda x: x[1], reverse=True)
+            for ext, count in sorted_types[:5]:
+                percentage = (count / total_files) * 100
+                print(f"   {ext}: {count:,} arquivos ({percentage:.1f}%)")
+        
+        # Mostrar alguns erros se houver
+        if self.stats['errors']:
+            print(f"\n❌ Primeiros erros encontrados:")
+            for i, error in enumerate(self.stats['errors'][:3]):
+                print(f"   {i+1}. {error[:80]}...")
+        
+        # Mostrar alguns warnings se houver
+        if self.stats['warnings_list']:
+            print(f"\n⚠️ Principais avisos:")
+            unique_warnings = list(set(self.stats['warnings_list']))
+            for i, warning in enumerate(unique_warnings[:3]):
+                print(f"   {i+1}. {warning[:80]}...")
+    
+    def _format_size(self, size_bytes):
+        """Formata tamanho em bytes para formato legível"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
     
     def validate_environment(self):
-        """Valida ambiente completo."""
-        self._print_status("Validando ambiente...", "info")
+        """Valida ambiente e dependências"""
+        print("ℹ️ Validando ambiente...")
         
-        # Verifica Python
-        if not self.check_python_installation():
-            return False
+        # Python
+        print("ℹ️ Verificando instalação do Python...")
+        python_version = self._get_python_version()
+        print(f"✅ Python {python_version} encontrado - OK!")
         
-        # Instala dependências
-        if not self.install_dependencies():
-            return False
+        # Requests (opcional)
+        print("ℹ️ Verificando dependências Python...")
+        if HAS_REQUESTS:
+            print("✅ ✓ requests disponível")
+        else:
+            print("ℹ️ ○ requests não disponível (usando urllib)")
         
-        # Verifica token
-        if not self.token:
-            self._print_status("Token não encontrado!", "error")
-            self._print_status("Configure usando uma das opções:", "info")
-            if self.system == "windows":
-                self._print_status("  $env:DT_API_TOKEN='seu_token'", "info")
-                self._print_status("  set DT_API_TOKEN=seu_token", "info")
-            else:
-                self._print_status("  export DT_API_TOKEN='seu_token'", "info")
-            self._print_status("  ou crie arquivo .env com DT_API_TOKEN=seu_token", "info")
-            return False
-            
-        masked_token = f"{self.token[:10]}...{self.token[-10:]}"
-        self._print_status(f"Token encontrado: {masked_token}", "success")
-        self._print_status(f"Sistema: {platform.system()} {platform.release()}", "success")
-        self._print_status(f"Python: {self.python_version}", "success")
+        # Token
+        print(f"✅ Token encontrado: {self._mask_token(self.token)}")
+        
+        # Sistema
+        print(f"✅ Sistema: {platform.system()} {platform.release()}")
+        print(f"✅ Python: {python_version}")
+        
         return True
     
+    def check_monaco(self):
+        """Verifica Monaco CLI"""
+        print("ℹ️ Verificando Monaco CLI...")
+        
+        if not self.monaco_path.exists():
+            print("⚠️ Monaco não encontrado, baixando...")
+            if not self.download_monaco():
+                print("❌ Falha ao baixar Monaco CLI")
+                return False
+        
+        # Testar Monaco
+        try:
+            result = subprocess.run([str(self.monaco_path), "version"], 
+                                 capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print(f"✅ Monaco encontrado: {self.monaco_path}")
+                return True
+        except Exception:
+            pass
+        
+        print("❌ Monaco CLI não está funcionando")
+        return False
+    
     def download_monaco(self):
-        """Baixa Monaco CLI automaticamente."""
-        self._print_status("Verificando Monaco CLI...", "info")
+        """Baixa Monaco CLI"""
+        print("🔄 Baixando Monaco CLI...")
         
-        if self.monaco_path.exists():
-            self._print_status(f"Monaco encontrado: {self.monaco_path}", "success")
-            return True
-            
-        self._print_status("Baixando Monaco CLI...", "download")
+        # URLs para diferentes plataformas
+        urls = {
+            'windows': f"https://github.com/dynatrace/dynatrace-configuration-as-code/releases/latest/download/monaco-windows-{self.arch}.exe",
+            'linux': f"https://github.com/dynatrace/dynatrace-configuration-as-code/releases/latest/download/monaco-linux-{self.arch}",
+            'darwin': f"https://github.com/dynatrace/dynatrace-configuration-as-code/releases/latest/download/monaco-darwin-{self.arch}"
+        }
         
-        # URLs baseadas no sistema operacional
-        base_url = "https://github.com/dynatrace/dynatrace-configuration-as-code/releases/latest/download"
-        
-        if self.system == "windows":
-            url = f"{base_url}/monaco-windows-{self.arch}.exe"
-            filename = "monaco.exe"
-        elif self.system == "darwin":
-            url = f"{base_url}/monaco-darwin-{self.arch}"
-            filename = "monaco"
-        else:
-            url = f"{base_url}/monaco-linux-{self.arch}"
-            filename = "monaco"
+        url = urls.get(self.system)
+        if not url:
+            print(f"❌ Sistema não suportado: {self.system}")
+            return False
         
         try:
-            self._print_status(f"Baixando de: {url}", "download")
-            
-            # Tenta diferentes métodos de download
-            success = False
-            
-            # Método 1: requests (se disponível e SSL funcionar)
             if HAS_REQUESTS:
-                try:
-                    response = requests.get(url, stream=True, timeout=60)
-                    response.raise_for_status()
-                    
-                    with open(filename, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    success = True
-                    self._print_status("Download via requests - OK", "success")
-                    
-                except Exception as requests_error:
-                    self._print_status(f"Requests falhou: {requests_error}", "warning")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                self.monaco_path.write_bytes(response.content)
             else:
-                self._print_status("Requests não disponível, usando urllib", "info")
-                
-                # Método 2: urllib com SSL desabilitado
-                try:
-                    import ssl
-                    ssl_context = ssl.create_default_context()
-                    ssl_context.check_hostname = False
-                    ssl_context.verify_mode = ssl.CERT_NONE
-                    
-                    request = urllib.request.Request(url)
-                    with urllib.request.urlopen(request, context=ssl_context, timeout=60) as response:
-                        with open(filename, 'wb') as f:
-                            f.write(response.read())
-                    success = True
-                    self._print_status("Download via urllib (SSL desabilitado) - OK", "success")
-                    
-                except Exception as urllib_error:
-                    self._print_status(f"urllib também falhou: {urllib_error}", "warning")
-                    
-                    # Método 3: curl externo (última tentativa)
-                    try:
-                        curl_cmd = ["curl", "-L", "-o", filename, url, "--insecure", "--connect-timeout", "60"]
-                        result = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=120)
-                        if result.returncode == 0:
-                            success = True
-                            self._print_status("Download via curl - OK", "success")
-                        else:
-                            raise Exception(f"curl falhou: {result.stderr}")
-                    except Exception as curl_error:
-                        self._print_status(f"curl também falhou: {curl_error}", "error")
+                urllib.request.urlretrieve(url, self.monaco_path)
             
-            if not success:
-                self._print_status("Todos os métodos de download falharam", "error")
-                self._print_status("Baixe manualmente:", "info")
-                self._print_status(f"URL: {url}", "info")
-                self._print_status(f"Salve como: {filename}", "info")
-                return False
+            # Dar permissão de execução (Unix)
+            if self.system != 'windows':
+                os.chmod(self.monaco_path, 0o755)
             
-            # Torna executável no Unix
-            if self.system != "windows":
-                os.chmod(filename, 0o755)
-                
-            self._print_status(f"Monaco baixado: {filename}", "success")
+            print(f"✅ Monaco baixado: {self.monaco_path}")
             return True
             
         except Exception as e:
-            self._print_status(f"Erro geral no download: {e}", "error")
+            print(f"❌ Erro ao baixar Monaco: {e}")
             return False
     
     def test_connectivity(self):
-        """Testa conectividade com Dynatrace usando Monaco CLI."""
-        self._print_status("Testando conectividade...", "progress")
+        """Testa conectividade com Dynatrace"""
+        print("🔄 Testando conectividade...")
         
-        # Cria configuração temporária para teste
-        temp_dir = Path(tempfile.mkdtemp())
+        test_url = f"{self.base_url}/api/v1/config/clusterversion"
+        headers = {"Authorization": f"Api-Token {self.token}"}
+        
         try:
-            # Cria manifest.yaml (formato novo do Monaco v2)
-            manifest_content = f"""
-environments:
-  test-env:
-    url: "{self.base_url}"
-    auth:
-      token:
-        name: DT_TOKEN
-
-projects:
-  - name: connectivity-test
-    path: projects/test
-"""
-            manifest_file = temp_dir / "manifest.yaml"
-            manifest_file.write_text(manifest_content.strip())
-            
-            # Cria estrutura de projeto vazia
-            project_dir = temp_dir / "projects" / "test"
-            project_dir.mkdir(parents=True)
-            
-            # Cria arquivo vazio de configuração
-            config_dir = project_dir / "auto-tag"
-            config_dir.mkdir(parents=True)
-            (config_dir / "test.yaml").write_text("configs: []")
-            
-            # Testa conectividade com Monaco usando deploy dry-run
-            cmd = [str(self.monaco_path), "deploy", "manifest.yaml", "--dry-run", "--environment", "test-env"]
-            
-            env = os.environ.copy()
-            env["DT_TOKEN"] = self.token
-            
-            result = subprocess.run(
-                cmd,
-                cwd=temp_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            # Verifica resultado
-            output_text = (result.stdout + result.stderr).lower()
-            
-            if result.returncode == 0 or "validation successful" in output_text or "would deploy" in output_text:
-                self._print_status("Conectividade OK! Token válido", "success")
-                return True
-            elif "401" in output_text or "unauthorized" in output_text:
-                self._print_status("Erro: Token inválido ou expirado", "error")
-                return False
-            elif "403" in output_text or "forbidden" in output_text:
-                self._print_status("Erro: Token sem permissões suficientes", "error")
-                return False
-            elif "connection" in output_text or "network" in output_text or "timeout" in output_text:
-                self._print_status("Erro: Problema de conectividade de rede", "error")
-                return False
+            if HAS_REQUESTS:
+                response = requests.get(test_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    print("✅ Conectividade OK!")
+                    return True
+                else:
+                    print(f"⚠️ Resposta inesperada: {response.status_code}")
             else:
-                # Se chegou aqui, pode ser um problema menor - vamos tentar continuar
-                self._print_status("Aviso: Teste de conectividade inconclusivo, mas continuando...", "warning")
-                return True
-                
-        except subprocess.TimeoutExpired:
-            self._print_status("Timeout na conectividade - verificar rede", "error")
-            return False
+                req = urllib.request.Request(test_url)
+                req.add_header("Authorization", f"Api-Token {self.token}")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        print("✅ Conectividade OK!")
+                        return True
         except Exception as e:
-            self._print_status(f"Erro no teste: {str(e)}", "error")
-            # Se o teste de conectividade falhar, vamos tentar continuar mesmo assim
-            self._print_status("Continuando mesmo com falha no teste...", "warning")
-            return True
-        finally:
-            # Limpa arquivos temporários
-            try:
-                shutil.rmtree(temp_dir)
-            except:
-                pass
+            print(f"⚠️ Aviso: Teste de conectividade inconclusivo, mas continuando...")
+        
+        return True  # Continua mesmo com teste inconclusivo
     
     def create_monaco_config(self):
-        """Cria configuração do Monaco."""
-        self._print_status("Criando configuração Monaco...", "progress")
+        """Cria configuração do Monaco"""
+        print("🔄 Criando configuração Monaco...")
         
-        config_dir = Path("monaco-config")
+        config_dir = self.script_dir / "monaco-config"
         config_dir.mkdir(exist_ok=True)
         
-        yaml_content = f"""environments:
-  production:
-    name: "Production Environment"
-    url:
-      type: "environment"
-      value: "{self.base_url}"
-    auth:
-      token:
-        type: "environment"
-        name: "DYNATRACE_API_TOKEN"
+        # Arquivo environments.yaml
+        env_config = f"""environments:
+  {self.base_url}:
+    - name: "production"
+      - url:
+        value: "{self.base_url}"
+      - token:
+        value: "{self.token}"
 """
         
         env_file = config_dir / "environments.yaml"
+        env_file.write_text(env_config, encoding='utf-8')
         
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.write(yaml_content)
-        
-        self._print_status(f"Configuração criada: {env_file}", "success")
-        return config_dir
+        print(f"✅ Configuração criada: {env_file}")
+        return str(config_dir)
     
     def run_backup(self):
-        """Executa backup completo."""
-        self._print_status("Executando backup...", "progress")
+        """Executa backup das configurações"""
+        print("🔄 Executando backup...")
         
-        # Cria diretório de backup
+        # Inicializar estatísticas
+        self.stats['start_time'] = datetime.now()
+        
+        # Criar diretório de backup
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = self.backup_dir / f"backup_{timestamp}"
         backup_path.mkdir(parents=True, exist_ok=True)
         
-        config_dir = self.create_monaco_config()
+        print(f"ℹ️ Salvando em: {backup_path}")
+        print("🔄 Iniciando backup... (monitoramento em tempo real)")
+        
+        # Definir variável de ambiente temporária para o token
+        env = os.environ.copy()
+        env["DT_TOKEN"] = self.token
         
         # Comando Monaco
         cmd = [
             str(self.monaco_path),
             "download",
             "--url", self.base_url,
-            "--token", "DYNATRACE_API_TOKEN",
-            "--output-folder", str(backup_path)
+            "--token", "DT_TOKEN",
+            "--output-folder", str(backup_path),
+            "--project", "project"
         ]
         
-        self._print_status(f"Salvando em: {backup_path}", "info")
-        self._print_status("Aguarde... (pode demorar alguns minutos)", "progress")
-        
-        # Configura ambiente
-        env = os.environ.copy()
-        env["DYNATRACE_API_TOKEN"] = self.token
-        
         try:
-            result = subprocess.run(
+            # Executar Monaco com monitoramento
+            process = subprocess.Popen(
                 cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=str(self.script_dir), 
                 env=env,
-                timeout=600,
-                check=True
+                universal_newlines=True
             )
             
-            self._print_status("Backup executado com sucesso!", "success")
+            # Iniciar monitoramento em thread separada
+            monitor_thread = threading.Thread(
+                target=self.monitor_progress, 
+                args=(process, backup_path)
+            )
+            monitor_thread.daemon = True
+            monitor_thread.start()
             
-            if backup_path.exists():
-                self._print_status(f"Backup criado em: {backup_path}", "success")
-                self._analyze_backup(backup_path)
-                self._create_restore_script(backup_path)
-                return backup_path
-            else:
-                self._print_status("Diretório de backup não foi criado", "error")
-                return None
+            # Capturar saída linha por linha
+            output_lines = []
+            while True:
+                line = process.stdout.readline()
+                if line == '' and process.poll() is not None:
+                    break
+                if line:
+                    output_lines.append(line.strip())
+            
+            # Aguardar processo terminar
+            return_code = process.wait()
+            
+            # Finalizar estatísticas
+            self.stats['end_time'] = datetime.now()
+            duration = (self.stats['end_time'] - self.stats['start_time']).total_seconds()
+            
+            # Analisar saída
+            full_output = '\n'.join(output_lines)
+            self.parse_monaco_output(full_output)
+            
+            if return_code == 0:
+                # Contar arquivos salvos
+                file_count = sum(1 for _ in backup_path.rglob('*') if _.is_file())
+                self.stats['successful_configs'] = file_count
                 
-        except subprocess.CalledProcessError as e:
-            self._print_status(f"Erro no backup (código: {e.returncode})", "error")
-            return None
-        except subprocess.TimeoutExpired:
-            self._print_status("Timeout no backup (mais de 10 minutos)", "error")
-            return None
+                print(f"\n✅ Backup concluído com sucesso!")
+                print(f"📁 Local: {backup_path}")
+                
+                # Mostrar estatísticas detalhadas
+                self.print_statistics(backup_path, duration)
+                
+                return True
+            else:
+                print(f"\n❌ Erro no backup (código: {return_code})")
+                
+                # Analisar erros mesmo em caso de falha
+                self.print_statistics(backup_path, duration)
+                
+                if full_output:
+                    print(f"\nDetalhes do erro:")
+                    # Mostrar últimas linhas do output
+                    error_lines = full_output.split('\n')[-10:]
+                    for line in error_lines:
+                        if line.strip():
+                            print(f"   {line}")
+                
+                return False
+                
         except Exception as e:
-            self._print_status(f"Erro inesperado: {e}", "error")
-            return None
+            print(f"\n❌ Erro ao executar backup: {e}")
+            return False
     
-    def _analyze_backup(self, backup_path):
-        """Analisa conteúdo do backup."""
-        self._print_status("Analisando backup...", "progress")
+    def run(self):
+        """Executa processo completo de backup"""
+        self.print_header("DYNATRACE BACKUP")
         
         try:
-            json_files = list(backup_path.rglob("*.json"))
+            # Validações
+            if not self.validate_environment():
+                return False
             
-            if not json_files:
-                self._print_status("Nenhum arquivo JSON encontrado", "warning")
-                return
+            if not self.check_monaco():
+                return False
             
-            # Agrupa por tipo
-            config_types = {}
-            total_size = 0
+            if not self.test_connectivity():
+                return False
             
-            for file in json_files:
-                try:
-                    config_type = file.parent.name
-                    if config_type not in config_types:
-                        config_types[config_type] = 0
-                    config_types[config_type] += 1
-                    total_size += file.stat().st_size
-                except:
-                    pass
+            # Backup
+            if not self.run_backup():
+                return False
             
-            # Mostra resumo
-            self._print_status("Resumo do backup:", "info")
-            for config_type, count in sorted(list(config_types.items())[:10]):
-                if count > 0:
-                    self._print_status(f"  📂 {config_type}: {count} arquivos", "info")
-            
-            if len(config_types) > 10:
-                self._print_status(f"  ... e {len(config_types) - 10} tipos mais", "info")
-            
-            total_mb = total_size / (1024 * 1024)
-            self._print_status(f"Total: {len(json_files)} arquivos ({total_mb:.1f} MB)", "success")
-            
-        except Exception as e:
-            self._print_status(f"Erro ao analisar: {e}", "warning")
-    
-    def _create_restore_script(self, backup_path):
-        """Cria script de restauração universal."""
-        
-        # Script Python universal
-        restore_py = backup_path / "restore.py"
-        
-        restore_content = f'''#!/usr/bin/env python3
-"""
-Script de Restauração Dynatrace - Universal
-Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
-"""
-
-import subprocess
-import sys
-import os
-import platform
-from pathlib import Path
-
-def print_status(message, status="info"):
-    icons = {{"info": "ℹ️", "success": "✅", "error": "❌"}}
-    print(f"{{icons.get(status, '•')}} {{message}}")
-
-def main():
-    print_status("Restaurando configurações do Dynatrace...")
-    
-    # Verifica token
-    token = os.getenv("DYNATRACE_API_TOKEN")
-    if not token:
-        print_status("Token não configurado!", "error")
-        system = platform.system().lower()
-        if system == "windows":
-            print_status("Configure: $env:DYNATRACE_API_TOKEN='seu_token'", "info")
-        else:
-            print_status("Configure: export DYNATRACE_API_TOKEN='seu_token'", "info")
-        return 1
-    
-    # Verifica Monaco
-    system = platform.system().lower()
-    if system == "windows":
-        monaco_path = Path("../../monaco.exe")
-    else:
-        monaco_path = Path("../../monaco")
-    
-    if not monaco_path.exists():
-        print_status(f"Monaco não encontrado: {{monaco_path}}", "error")
-        return 1
-    
-    # Executa restauração
-    cmd = [
-        str(monaco_path),
-        "deploy",
-        "--url", "{self.base_url}",
-        "--token", "DYNATRACE_API_TOKEN",
-        "--project", ".",
-        "--verbose"
-    ]
-    
-    print_status("Executando restauração...", "info")
-    
-    try:
-        env = os.environ.copy()
-        result = subprocess.run(cmd, env=env, check=True)
-        print_status("Restauração concluída com sucesso!", "success")
-        return 0
-    except subprocess.CalledProcessError:
-        print_status("Erro na restauração", "error")
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(main())
-'''
-        
-        with open(restore_py, 'w', encoding='utf-8') as f:
-            f.write(restore_content)
-        
-        # Torna executável
-        if self.system != "windows":
-            os.chmod(restore_py, 0o755)
-        
-        # README
-        readme_path = backup_path / "README.md"
-        readme_content = f'''# Backup Dynatrace - {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
-
-## Restauração Universal
-
-### Todas as plataformas (Python):
-```bash
-# Configure o token
-export DYNATRACE_API_TOKEN='seu_token'  # Linux/macOS
-$env:DYNATRACE_API_TOKEN='seu_token'    # Windows
-
-# Execute a restauração
-python restore.py
-```
-
-## Informações do Backup
-
-- **Data/Hora**: {datetime.now().strftime("%d/%m/%Y às %H:%M:%S")}
-- **Origem**: {self.base_url}
-- **Ferramenta**: Monaco CLI
-- **Python**: {self.python_version}
-- **Sistema**: {platform.system()} {platform.release()}
-
-## Estrutura
-
-- **restore.py**: Script Python universal para restauração
-- **project/**: Configurações do Dynatrace em JSON
-
-## Requisitos
-
-- Python 3.6+ (será instalado automaticamente se necessário)
-- Monaco CLI (incluído)
-- Token com permissões de escrita
-
----
-*Backup gerado pelo script Python universal de backup do Dynatrace*
-'''
-        
-        with open(readme_path, 'w', encoding='utf-8') as f:
-            f.write(readme_content)
-        
-        self._print_status(f"Scripts de restauração criados", "success")
-    
-    def run_complete_backup(self):
-        """Executa processo completo de backup."""
-        print("=" * 70)
-        print("🚀 DYNATRACE BACKUP - SOLUÇÃO UNIVERSAL PYTHON")
-        print("=" * 70)
-        
-        # Validações e instalações automáticas
-        if not self.validate_environment():
-            return False
-            
-        if not self.download_monaco():
-            return False
-            
-        if not self.test_connectivity():
-            return False
-            
-        # Executa backup
-        backup_path = self.run_backup()
-        
-        if backup_path:
-            print("\n" + "=" * 70)
-            print("✅ BACKUP CONCLUÍDO COM SUCESSO!")
+            # Sucesso
+            self.print_header("BACKUP CONCLUÍDO COM SUCESSO!")
+            print("🎉 Todas as configurações foram salvas!")
+            print(f"📁 Verifique a pasta: {self.backup_dir}")
             print("=" * 70)
-            self._print_status(f"Local: {backup_path}", "success")
-            self._print_status("Scripts universais incluídos", "success")
-            
-            print("\n💡 Para restaurar:")
-            print(f"   cd {backup_path}")
-            print("   python restore.py")
-            
-            print("\n📖 Veja README.md para instruções detalhadas")
             
             return True
-        else:
-            print("\n" + "=" * 70)
-            print("❌ FALHA NO BACKUP")
-            print("=" * 70)
+            
+        except KeyboardInterrupt:
+            print("\n\n❌ Operação cancelada pelo usuário.")
+            return False
+        except Exception as e:
+            print(f"\n❌ Erro inesperado: {e}")
             return False
 
 def main():
-    """Função principal."""
-    try:
-        backup = DynatraceBackupUniversal()
-        success = backup.run_complete_backup()
-        return 0 if success else 1
-    except KeyboardInterrupt:
-        print("\n⚠️  Backup cancelado pelo usuário")
-        return 1
-    except Exception as e:
-        print(f"\n❌ Erro inesperado: {e}")
-        return 1
+    """Função principal"""
+    backup = DynatraceBackup()
+    success = backup.run()
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
