@@ -20,7 +20,28 @@ Uma ferramenta automatizada para fazer backup das configurações do Dynatrace u
 - Acesso ao ambiente Dynatrace com permissões de leitura
 - Token de API do Dynatrace
 
-## 📦 **Instalação**
+## � **Documentação**
+
+### 📖 Guias de Automação com OAuth Client
+
+1. **[OAUTH_CLIENT_CAPABILITIES.md](OAUTH_CLIENT_CAPABILITIES.md)**  
+   📘 Documentação completa de todas as capacidades do OAuth Client
+
+2. **[QUICKSTART.md](QUICKSTART.md)**  
+   ⚡ Guia rápido para começar em 5 minutos
+
+3. **[RESUMO_EXECUTIVO.md](RESUMO_EXECUTIVO.md)**  
+   📊 Visão executiva e casos de uso
+
+4. **[MAPA_VISUAL.md](MAPA_VISUAL.md)**  
+   🗺️ Diagramas e fluxos visuais das operações
+
+5. **[GUIA_AUTENTICACAO.md](GUIA_AUTENTICACAO.md)** ⭐ **NOVO!**  
+   🔐 OAuth Client vs Access Token - Entenda as diferenças e quando usar cada um
+
+---
+
+## �📦 **Instalação**
 
 ### 1. Clone o Repositório
 ```bash
