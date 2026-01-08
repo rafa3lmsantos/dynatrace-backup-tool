@@ -405,8 +405,8 @@ class DynatraceBackup:
         # Inicializar estatísticas
         self.stats['start_time'] = datetime.now()
         
-        # Criar diretório de backup
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Criar diretório de backup com formato brasileiro (dia_mes_ano_hora_minuto_segundo)
+        timestamp = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         backup_path = self.backup_dir / f"backup_{timestamp}"
         backup_path.mkdir(parents=True, exist_ok=True)
         

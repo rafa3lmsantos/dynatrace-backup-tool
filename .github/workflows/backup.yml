@@ -1,0 +1,163 @@
+name: Backup Dynatrace → GitHub (Semanal + Email)
+
+on:
+  schedule:
+    # Segunda-feira às 8:00 AM BRT (11:00 UTC)
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      # ========== EXECUTAR BACKUP ==========
+      - name: Run Dynatrace Backup
+        id: backup
+        env:
+          DT_CLUSTER_URL: ${{ secrets.DT_CLUSTER_URL }}
+          DT_API_TOKEN: ${{ secrets.DT_API_TOKEN }}
+        run: |
+          python dynatrace-backup-auto.py
+          LATEST=$(ls -td backups/backup_*/ | head -1)
+          echo "backup_path=$LATEST" >> $GITHUB_OUTPUT
+          echo "backup_name=$(basename $LATEST)" >> $GITHUB_OUTPUT
+      
+      # ======= CHECKOUT BACKUPS BRANCH =======
+      - name: Checkout backups branch
+        run: |
+          git fetch origin
+          git checkout backups 2>/dev/null || git checkout --orphan backups
+          git rm -r . 2>/dev/null || true
+      
+      # ===== COPIAR BACKUP (SEM COMPACTAR) =====
+      - name: Copy backup to backups branch
+        run: |
+          mkdir -p backups
+          cp -r main/backups/backup_*/ backups/ 2>/dev/null || true
+      
+      # ====== DELETAR BACKUPS > 90 DIAS =====
+      - name: Cleanup old backups (90 days)
+        id: cleanup
+        run: |
+          cd backups
+          DELETED=""
+          
+          while IFS= read -r dir; do
+            if [ -n "$dir" ]; then
+              DELETED="$DELETED$(basename $dir)"$'\n'
+              rm -rf "$dir"
+            fi
+          done < <(find . -maxdepth 1 -type d -name "backup_*" -mtime +90)
+          
+          if [ -z "$DELETED" ]; then
+            echo "deleted=Nenhum backup foi deletado (todos com menos de 90 dias)" >> $GITHUB_OUTPUT
+          else
+            echo "deleted=$DELETED" >> $GITHUB_OUTPUT
+          fi
+          
+          cd ..
+      
+      # ====== COMMITAR NA BRANCH BACKUPS ======
+      - name: Commit and push backups
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add backups/
+          git commit -m "Backup ${{ steps.backup.outputs.backup_name }}" || true
+          git push origin backups --force
+      
+      # ======= LISTAR BACKUPS ATUAIS =======
+      - name: Get backup statistics
+        id: stats
+        run: |
+          cd backups
+          COUNT=$(ls -d backup_*/ 2>/dev/null | wc -l)
+          SIZE=$(du -sh . | cut -f1)
+          BACKUP_LIST=$(ls -d backup_*/ | sed 's/\/$//' | tr '\n' ', ' | sed 's/,$//')
+          
+          echo "backup_count=$COUNT" >> $GITHUB_OUTPUT
+          echo "backup_size=$SIZE" >> $GITHUB_OUTPUT
+          echo "backup_list=$BACKUP_LIST" >> $GITHUB_OUTPUT
+          
+          cd ..
+      
+      # ======= ENVIAR EMAIL (SUCESSO) =======
+      - name: Send Success Email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          subject: "✅ Backup Dynatrace - Sucesso"
+          to: observabilidade@vr.com.br
+          from: observabilidade@vr.com.br
+          body: |
+            =========================================
+            📊 RELATÓRIO DE BACKUP DYNATRACE
+            =========================================
+            
+            Status: ✅ SUCESSO
+            Data/Hora: $(date '+%d/%m/%Y %H:%M:%S')
+            
+            ------- BACKUP CRIADO -------
+            Nome: ${{ steps.backup.outputs.backup_name }}
+            Local: backups/${{ steps.backup.outputs.backup_name }}/
+            
+            ------- LIMPEZA (BACKUPS > 90 DIAS) -------
+            ${{ steps.cleanup.outputs.deleted }}
+            
+            ------- ESTATÍSTICAS ATUAIS -------
+            Total de backups: ${{ steps.stats.outputs.backup_count }}
+            Espaço total: ${{ steps.stats.outputs.backup_size }}
+            
+            Backups armazenados:
+            ${{ steps.stats.outputs.backup_list }}
+            
+            ------- PRÓXIMO BACKUP -------
+            Próxima execução: Próxima segunda-feira às 8:00 AM BRT
+            
+            =========================================
+            Acesse os backups em:
+            GitHub > backup-tool > branches > backups
+            =========================================
+      
+      # ======= ENVIAR EMAIL (FALHA) =======
+      - name: Send Failure Email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          subject: "❌ FALHA NO BACKUP DYNATRACE"
+          to: observabilidade@vr.com.br
+          from: observabilidade@vr.com.br
+          body: |
+            =========================================
+            ❌ FALHA NO BACKUP DYNATRACE
+            =========================================
+            
+            Data/Hora: $(date '+%d/%m/%Y %H:%M:%S')
+            
+            Status: FALHA
+            
+            ------- AÇÃO NECESSÁRIA -------
+            Por favor, investigar e corrigir o problema.
+            
+            Verificar logs em:
+            GitHub > backup-tool > Actions
+            
+            ------- CONTATO -------
+            Equipe de Observabilidade
+            observabilidade@vr.com.br
+            
+            =========================================
