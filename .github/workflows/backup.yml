@@ -1,4 +1,4 @@
-name: Backup Dynatrace → GitHub (Semanal + Email)
+name: Backup Dynatrace Semanal
 
 on:
   schedule:
@@ -99,8 +99,8 @@ jobs:
           server_address: ${{ secrets.SMTP_SERVER }}
           server_port: ${{ secrets.SMTP_PORT }}
           subject: "✅ Backup Dynatrace - Sucesso"
-          to: observabilidade@vr.com.br
-          from: observabilidade@vr.com.br
+          to: 
+          from: 
           body: |
             =========================================
             📊 RELATÓRIO DE BACKUP DYNATRACE
@@ -139,8 +139,8 @@ jobs:
           server_address: ${{ secrets.SMTP_SERVER }}
           server_port: ${{ secrets.SMTP_PORT }}
           subject: "❌ FALHA NO BACKUP DYNATRACE"
-          to: observabilidade@vr.com.br
-          from: observabilidade@vr.com.br
+          to: 
+          from: 
           body: |
             =========================================
             ❌ FALHA NO BACKUP DYNATRACE
