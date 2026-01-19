@@ -1,9 +1,9 @@
 name: Backup Dynatrace Semanal
 
 on:
-  schedule:
+ # schedule:
     # Segunda-feira às 8:00 AM BRT (11:00 UTC)
-    - cron: '0 11 * * 1'
+  #  - cron: '0 11 * * 1'
   workflow_dispatch:
 
 jobs:
